@@ -45,11 +45,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\DivadDependencyInjection\DivadDependencyInjection.vcxproj">
-      <Project>{838340cf-2faa-4924-91af-53470627a971}</Project>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
   <ItemDefinitionGroup />
