@@ -18,7 +18,7 @@ There are 3 types of service life-times
 
 ### Transient
 
-Transient services are injected as unique_ptrs or shared_ptrs.
+Transient services are injected as shared_ptrs.
 Each time the service is requested, a new instance is created.
 Their life-time is controlled by the consuming service.
 
