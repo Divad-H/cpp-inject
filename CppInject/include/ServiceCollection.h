@@ -3,6 +3,8 @@
 #include <any>
 #include <functional>
 #include <memory>
+#include <stdexcept>
+#include <string>
 #include <tuple>
 #include <typeindex>
 #include <typeinfo>
@@ -116,7 +118,7 @@ namespace CppInject
     inline typename std::enable_if_t<IsVector<T>::value && IsSharedPointer<std::decay_t<typename T::value_type>>::value, T> getService(IServiceProvider& serviceProvider)
     {
       T services{};
-      auto servicesAny = serviceProvider.getServices(std::type_index(typeid(std::decay_t<T::value_type>)));
+      auto servicesAny = serviceProvider.getServices(std::type_index(typeid(std::decay_t<typename T::value_type>)));
       for (auto&& service : std::move(servicesAny))
         services.emplace_back(std::any_cast<T::value_type>(std::move(service)));
       return services;
