@@ -99,7 +99,7 @@ namespace CppInject
 
   template<typename T>
   struct IsSharedPointer <T, typename std::enable_if_t<
-    std::is_same<typename std::decay_t<T>, std::shared_ptr<typename std::decay_t<T>::element_type>>::value>>
+    std::is_same_v<typename std::decay_t<T>, std::shared_ptr<typename std::decay_t<T>::element_type>>>>
     : std::true_type { };
 
   template<typename T, typename Enable = void>
@@ -113,7 +113,7 @@ namespace CppInject
   class ServiceFactory
   {
     template<class T>
-    inline typename std::enable_if_t<IsVector<T>::value&& IsSharedPointer<std::decay_t<typename T::value_type>>::value, T> getService(IServiceProvider& serviceProvider)
+    inline typename std::enable_if_t<IsVector<T>::value && IsSharedPointer<std::decay_t<typename T::value_type>>::value, T> getService(IServiceProvider& serviceProvider)
     {
       T services{};
       auto servicesAny = serviceProvider.getServices(std::type_index(typeid(std::decay_t<T::value_type>)));
@@ -145,14 +145,14 @@ namespace CppInject
     }
 
     template<class Tuple, std::size_t I = 0, class... Args>
-    inline typename std::enable_if<I == std::tuple_size_v<Tuple>, std::shared_ptr<TService>>::type
+    inline typename std::enable_if_t<I == std::tuple_size_v<Tuple>, std::shared_ptr<TService>>
       createInternal(IServiceProvider& serviceProvider, Args&&... args)
     {
       return std::make_shared<TService>(std::forward<Args>(args)...);
     }
 
     template<class Tuple, std::size_t I = 0, class... Args>
-    inline typename std::enable_if<(I < std::tuple_size_v<Tuple>), std::shared_ptr<TService>>::type
+    inline typename std::enable_if_t<(I < std::tuple_size_v<Tuple>), std::shared_ptr<TService>>
       createInternal(IServiceProvider& serviceProvider, Args&&... args)
     {
       using Type = std::tuple_element_t<I, Tuple>;
