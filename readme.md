@@ -1,5 +1,7 @@
 # Simple Dependency Injection for c++
 
+![build workflow](https://github.com/Divad-H/cpp-inject/actions/workflows/msbuild.yml/badge.svg)
+
 This is a header-only library that implements simple dependency injection. It is inspired by the [C# dependency injection from Microsoft](https://docs.microsoft.com/en-us/dotnet/core/extensions/dependency-injection).
 
 ## Basic usage
