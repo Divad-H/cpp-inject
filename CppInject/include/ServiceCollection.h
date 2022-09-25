@@ -12,89 +12,36 @@
 #include <utility>
 #include <vector>
 
+#include "IServiceProvider.h"
 #include "TypeTraits.h"
 
 namespace CppInject {
 
-enum class ServiceType {
-  Singleton,
-  Scoped,
-  Transient,
-};
-
-template <class TService>
-using ServiceVector = std::vector<std::reference_wrapper<TService>>;
-
-class IServiceProvider {
- public:
-  virtual ~IServiceProvider() = default;
-
-  virtual std::any getService(std::type_index type) = 0;
-  virtual std::vector<std::any> getServices(std::type_index type) = 0;
-
-  template <typename TService>
-  TService* getService() {
-    auto res = getService(std::type_index(typeid(TService)));
-    if (res.has_value())
-      return &std::any_cast<std::reference_wrapper<TService>>(res).get();
-    return nullptr;
-  }
-
-  template <typename TService>
-  TService& getRequiredService() {
-    auto res = getService<TService>();
-    if (res != nullptr) return *res;
-    throw std::logic_error(
-        typeid(TService).name() +
-        std::string{
-            " has not been registered as a singleton or scoped service."});
-  }
-
-  template <typename TService>
-  std::shared_ptr<TService> getTransientService() {
-    auto res = getService(std::type_index(typeid(std::shared_ptr<TService>)));
-    if (res.has_value())
-      return std::any_cast<std::shared_ptr<TService>>(std::move(res));
-    return nullptr;
-  }
-
-  template <typename TService>
-  std::shared_ptr<TService> getRequiredTransientService() {
-    auto res = getTransientService<TService>();
-    if (res != nullptr) return res;
-    throw std::logic_error(
-        typeid(TService).name() +
-        std::string{" has not been registered as a transient service."});
-  }
-
-  template <typename TService>
-  ServiceVector<TService> getServices() {
-    ServiceVector<TService> res;
-    auto servicesAny = getServices(std::type_index(typeid(TService)));
-    for (auto& service : servicesAny)
-      res.emplace_back(
-          std::any_cast<std::reference_wrapper<TService>>(service));
-    return res;
-  }
-
-  template <typename TService>
-  std::vector<std::shared_ptr<TService>> getTransientServices() {
-    std::vector<std::shared_ptr<TService>> res;
-    auto servicesAny =
-        getServices(std::type_index(typeid(std::shared_ptr<TService>)));
-    for (auto&& service : std::move(servicesAny))
-      res.emplace_back(
-          std::any_cast<std::shared_ptr<TService>&&>(std::move(service)));
-    return res;
-  }
-};
-
-class IServiceProviderRoot : public IServiceProvider {
- public:
-  virtual std::unique_ptr<IServiceProvider> createScope() = 0;
-};
-
 class ServiceCollection {
+ public:
+  template <class TService, class TImplementation = TService,
+            typename = typename std::enable_if_t<
+                std::is_base_of_v<TService, TImplementation>>>
+  void addSingleton();
+
+  template <class TService, class TImplementation = TService,
+            typename = typename std::enable_if_t<
+                std::is_base_of_v<TService, TImplementation>>>
+  void addScoped();
+
+  template <class TService, class TImplementation = TService,
+            typename = typename std::enable_if_t<
+                std::is_base_of_v<TService, TImplementation>>>
+  void addTransient();
+
+  std::unique_ptr<IServiceProviderRoot> build();
+
+ private:
+  enum class ServiceType {
+    Singleton,
+    Scoped,
+    Transient,
+  };
   struct ServiceDescription {
     using FactoryFunction = std::function<std::any(IServiceProvider& sp)>;
     using ConversionFunction = std::function<std::any(std::any managedData)>;
@@ -153,11 +100,12 @@ class ServiceCollection {
   template <class TService>
   class ServiceFactory {
     template <class T>
-    inline typename std::enable_if_t<
-        IsVector<T>::value &&
-            IsSharedPointer<std::decay_t<typename T::value_type>>::value,
-        T>
-    getService(IServiceProvider& serviceProvider) {
+    inline
+        typename std::enable_if_t<TypeTraits::IsVector<T>::value &&
+                                      TypeTraits::IsSharedPointer<std::decay_t<
+                                          typename T::value_type>>::value,
+                                  T>
+        getService(IServiceProvider& serviceProvider) {
       T services{};
       auto servicesAny = serviceProvider.getServices(
           std::type_index(typeid(std::decay_t<typename T::value_type>)));
@@ -167,11 +115,12 @@ class ServiceCollection {
     }
 
     template <class T>
-    inline typename std::enable_if_t<
-        IsVector<T>::value &&
-            !IsSharedPointer<std::decay_t<typename T::value_type>>::value,
-        T>
-    getService(IServiceProvider& serviceProvider) {
+    inline
+        typename std::enable_if_t<TypeTraits::IsVector<T>::value &&
+                                      !TypeTraits::IsSharedPointer<std::decay_t<
+                                          typename T::value_type>>::value,
+                                  T>
+        getService(IServiceProvider& serviceProvider) {
       T services{};
       auto servicesAny = serviceProvider.getServices(
           std::type_index(typeid(std::decay_t<typename T::value_type::type>)));
@@ -181,14 +130,15 @@ class ServiceCollection {
     }
 
     template <class T>
-    inline std::enable_if_t<IsSharedPointer<T>::value, T> getService(
-        IServiceProvider& serviceProvider) {
+    inline std::enable_if_t<TypeTraits::IsSharedPointer<T>::value, T>
+    getService(IServiceProvider& serviceProvider) {
       return std::any_cast<T>(
           serviceProvider.getService(std::type_index(typeid(T))));
     }
 
     template <class T>
-    inline std::enable_if_t<!IsSharedPointer<T>::value && !IsVector<T>::value,
+    inline std::enable_if_t<!TypeTraits::IsSharedPointer<T>::value &&
+                                !TypeTraits::IsVector<T>::value,
                             T&>
     getService(IServiceProvider& serviceProvider) {
       return std::any_cast<std::reference_wrapper<T>>(
@@ -222,28 +172,10 @@ class ServiceCollection {
             typename = typename std::enable_if_t<serviceType !=
                                                  ServiceType::Transient>>
   void addService();
-
- public:
-  template <class TService, class TImplementation = TService,
-            typename = typename std::enable_if_t<
-                std::is_base_of_v<TService, TImplementation>>>
-  void addSingleton();
-
-  template <class TService, class TImplementation = TService,
-            typename = typename std::enable_if_t<
-                std::is_base_of_v<TService, TImplementation>>>
-  void addScoped();
-
-  template <class TService, class TImplementation = TService,
-            typename = typename std::enable_if_t<
-                std::is_base_of_v<TService, TImplementation>>>
-  void addTransient();
-
-  std::unique_ptr<IServiceProviderRoot> build();
 };
 
-template <class TService, class TImplementation, ServiceType serviceType,
-          typename>
+template <class TService, class TImplementation,
+          ServiceCollection::ServiceType serviceType, typename>
 void ServiceCollection::addService() {
   const auto typeIndex = std::type_index(typeid(TService));
   auto& serviceFactories =

@@ -149,6 +149,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="include\ConstructorFinder.h" />
+    <ClInclude Include="include\IServiceProvider.h" />
     <ClInclude Include="include\ServiceCollection.h" />
     <ClInclude Include="include\TypeTraits.h" />
   </ItemGroup>

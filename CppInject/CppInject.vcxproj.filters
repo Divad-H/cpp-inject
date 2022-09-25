@@ -15,5 +15,8 @@
     <ClInclude Include="include\TypeTraits.h">
       <Filter>include</Filter>
     </ClInclude>
+    <ClInclude Include="include\IServiceProvider.h">
+      <Filter>include</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

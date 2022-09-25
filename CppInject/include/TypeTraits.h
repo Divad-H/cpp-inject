@@ -4,7 +4,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace CppInject {
+namespace CppInject::TypeTraits {
 template <typename T, typename Enable = void>
 struct IsSharedPointer : std::false_type {};
 
@@ -24,4 +24,4 @@ struct IsVector<T, typename std::enable_if_t<std::is_same<
                        std::vector<typename T::value_type,
                                    typename T::allocator_type>>::value>>
     : std::true_type {};
-}  // namespace CppInject
+}  // namespace CppInject::TypeTraits
