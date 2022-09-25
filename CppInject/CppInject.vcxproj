@@ -150,6 +150,7 @@
   <ItemGroup>
     <ClInclude Include="include\ConstructorFinder.h" />
     <ClInclude Include="include\ServiceCollection.h" />
+    <ClInclude Include="include\TypeTraits.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
