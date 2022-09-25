@@ -1,5 +1,3 @@
-#include "pch.h"
-
 #include <ConstructorFinder.h>
 #include <ServiceCollection.h>
 
