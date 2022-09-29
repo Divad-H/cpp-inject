@@ -542,6 +542,96 @@ TEST(ServiceProviderTest, CanInjectMultipleTransientServices) {
   ASSERT_EQ(3, service._services.size());
 }
 
+TEST(ServiceProviderTest, CanCreateServiceFromFactory) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addSingleton<IService>(
+      [](IServiceProvider&) { return std::make_unique<Service1>(); });
+  auto serviceProvider = serviceCollection.build();
+  auto service = serviceProvider->getService<IService>();
+  ASSERT_NE(nullptr, service);
+}
+
+TEST(ServiceProviderTest, CanUseServiceProviderInFactory) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addSingleton<LeafService1>();
+  serviceCollection.addSingleton([](IServiceProvider& sp) {
+    return std::make_unique<ServiceWithDependency>(
+        sp.getRequiredService<LeafService1>());
+  });
+  auto serviceProvider = serviceCollection.build();
+  auto service = serviceProvider->getService<ServiceWithDependency>();
+  ASSERT_NE(nullptr, service);
+}
+
+TEST(ServiceProviderTest, CanCreateScopedServiceFromFactory) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addScoped<IService>(
+      [](IServiceProvider&) { return std::make_unique<Service1>(); });
+  auto serviceProvider = serviceCollection.build();
+  auto scope = serviceProvider->createScope();
+  auto service = scope->getService<IService>();
+  ASSERT_NE(nullptr, service);
+}
+
+TEST(ServiceProviderTest, CanUseScopedServiceProviderInFactory) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addSingleton<LeafService1>();
+  serviceCollection.addScoped([](IServiceProvider& sp) {
+    return std::make_unique<ServiceWithDependency>(
+        sp.getRequiredService<LeafService1>());
+  });
+  auto serviceProvider = serviceCollection.build();
+  auto scope1 = serviceProvider->createScope();
+  auto scope2 = serviceProvider->createScope();
+  auto service1 = scope1->getService<ServiceWithDependency>();
+  auto service2 = scope2->getService<ServiceWithDependency>();
+  ASSERT_NE(nullptr, service1);
+  ASSERT_NE(nullptr, service2);
+  ASSERT_NE(service1, service2);
+  ASSERT_EQ(&service1->_leafService, &service2->_leafService);
+}
+
+TEST(ServiceProviderTest, CanCreateTransientServiceFromFactory) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addTransient<IService>(
+      [](IServiceProvider&) { return std::make_unique<Service1>(); });
+  auto serviceProvider = serviceCollection.build();
+  auto scope = serviceProvider->createScope();
+  auto service = scope->getTransientService<IService>();
+  ASSERT_NE(nullptr, service);
+}
+
+TEST(ServiceProviderTest, CanAddExistingService) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addSingleton<IService>(std::make_shared<Service1>());
+  auto serviceProvider = serviceCollection.build();
+  auto service = serviceProvider->getService<IService>();
+  ASSERT_NE(nullptr, service);
+}
+
+struct DestructorCheck {
+  int value = 1;
+  ~DestructorCheck() { --value; }
+};
+
+struct CheckService {
+  int value;
+  CheckService(int v) : value(v) {}
+};
+
+TEST(ServiceProviderTest, KeepsFactoryLambdaCapturesInServiceProvider) {
+  ServiceCollection serviceCollection;
+  { 
+    auto checker = std::make_shared<DestructorCheck>();
+    serviceCollection.addSingleton([checker](IServiceProvider&) {
+      return std::make_unique<CheckService>(checker->value);
+    });
+  }
+  auto serviceProvider = serviceCollection.build();
+  auto service = serviceProvider->getRequiredService<CheckService>();
+  ASSERT_EQ(1, service.value);
+}
+
 static constexpr size_t numberOfConcurrencyTestIterations = 1000;
 static constexpr size_t numberOfConcurrentIterations = 32;
 

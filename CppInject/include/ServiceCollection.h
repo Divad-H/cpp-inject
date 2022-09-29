@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <typeindex>
 #include <typeinfo>
 #include <unordered_map>
@@ -27,15 +28,56 @@ class ServiceCollection {
                 std::is_base_of_v<TService, TImplementation>>>
   void addSingleton();
 
+  template <class TService, typename F,
+            typename = typename std::enable_if_t<std::is_base_of_v<
+                TService, typename std::invoke_result_t<
+                              F, IServiceProvider&>::element_type>>>
+  void addSingleton(F&& factory);
+
+  template <typename F, typename = typename std::invoke_result_t<
+                            F, IServiceProvider&>::element_type>
+  void addSingleton(F&& factory);
+
+  /// <summary>
+  /// Add an existing service to the ServiceCollection.
+  /// <para/>
+  /// The ServiceCollection and the ServiceProvider keep a shared_ptr to the
+  /// instance
+  /// </summary>
+  /// <typeparam name="TService">The type of the service</typeparam>
+  /// <typeparam name="TImplementation">The type of the implementation -
+  /// TService must be a base class of TImplementation</typeparam>
+  /// <param name="existingService">An existing service.</param>
+  template <class TService, typename TImplementation = TService,
+            typename = typename std::enable_if_t<
+                std::is_base_of_v<TService, TImplementation>>>
+  void addSingleton(std::shared_ptr<TImplementation> existingService);
+
   template <class TService, class TImplementation = TService,
             typename = typename std::enable_if_t<
                 std::is_base_of_v<TService, TImplementation>>>
   void addScoped();
 
+  template <class TService, typename F,
+            typename = typename std::enable_if_t<std::is_base_of_v<
+                TService, typename std::invoke_result_t<
+                              F, IServiceProvider&>::element_type>>>
+  void addScoped(F&& factory);
+
+  template <typename F, typename = typename std::invoke_result_t<
+                            F, IServiceProvider&>::element_type>
+  void addScoped(F&& factory);
+
   template <class TService, class TImplementation = TService,
             typename = typename std::enable_if_t<
                 std::is_base_of_v<TService, TImplementation>>>
   void addTransient();
+
+  template <class TService, typename F,
+            typename = typename std::enable_if_t<std::is_base_of_v<
+                TService, typename std::invoke_result_t<
+                              F, IServiceProvider&>::element_type>>>
+  void addTransient(F&& factory);
 
   std::unique_ptr<IServiceProviderRoot> build();
 
@@ -91,7 +133,7 @@ class ServiceCollection {
       std::vector<std::any> getServices(std::type_index type) override;
 
       template <class TServiceProvider>
-    static std::any getService(
+      static std::any getService(
           const std::pair<std::type_index, FactoryFunctionCollection>&
               factories,
           TServiceProvider& serviceProviderForThisService,
@@ -186,6 +228,14 @@ class ServiceCollection {
             typename = typename std::enable_if_t<serviceType !=
                                                  ServiceType::Transient>>
   void addService();
+
+  template <
+      class TService, ServiceType serviceType, class F,
+      typename = typename std::enable_if_t<
+          serviceType != ServiceType::Transient &&
+          std::is_base_of_v<TService, typename std::invoke_result_t<
+                                          F, IServiceProvider&>::element_type>>>
+  void addService(F&& factory);
 };
 
 template <class TService, class TImplementation,
@@ -216,6 +266,57 @@ void ServiceCollection::addScoped() {
   addService<TService, TImplementation, ServiceType::Scoped>();
 }
 
+template <class TService, ServiceCollection::ServiceType serviceType, class F,
+          typename>
+void ServiceCollection::addService(F&& factory) {
+  using SharedPtrType = std::shared_ptr<
+      typename std::invoke_result_t<F, IServiceProvider&>::element_type>;
+  const auto typeIndex = std::type_index(typeid(TService));
+  auto& serviceFactories =
+      _factories.emplace(typeIndex, FactoryFunctionCollection{}).first->second;
+  serviceFactories.emplace_back(
+      [f = std::move(factory)](IServiceProvider& sp) -> std::any {
+        return SharedPtrType(f(sp));
+      },
+      [](std::any managedData) -> std::any {
+        return std::ref(static_cast<TService&>(
+            *std::any_cast<SharedPtrType&>(managedData)));
+      },
+      serviceType);
+}
+
+template <class TService, class F, typename>
+void ServiceCollection::addSingleton(F&& factory) {
+  addService<TService, ServiceType::Singleton>(std::forward<F>(factory));
+}
+
+template <typename F, typename>
+void ServiceCollection::addSingleton(F&& factory) {
+  addSingleton<
+      typename std::invoke_result_t<F, IServiceProvider&>::element_type, F>(
+      std::forward<F>(factory));
+}
+
+template <class TService, class F, typename>
+void ServiceCollection::addScoped(F&& factory) {
+  addService<TService, ServiceType::Scoped>(std::forward<F>(factory));
+}
+
+template <typename F, typename>
+void ServiceCollection::addScoped(F&& factory) {
+  addScoped<typename std::invoke_result_t<F, IServiceProvider&>::element_type,
+            F>(std::forward<F>(factory));
+}
+
+template <class TService, typename TImplementation, typename>
+void ServiceCollection::addSingleton(
+    std::shared_ptr<TImplementation> existingService) {
+  addService<TService, ServiceType::Singleton>(
+      [service = std::move(existingService)](IServiceProvider&) {
+        return service;
+      });
+}
+
 template <class TService, class TImplementation, typename>
 void ServiceCollection::addTransient() {
   const auto typeIndex = std::type_index(typeid(std::shared_ptr<TService>));
@@ -230,6 +331,24 @@ void ServiceCollection::addTransient() {
         return std::static_pointer_cast<TService>(
             std::any_cast<std::shared_ptr<TImplementation>>(
                 std::move(managedData)));
+      },
+      ServiceType::Transient);
+}
+
+template <class TService, class F, typename>
+void ServiceCollection::addTransient(F&& factory) {
+  using SharedPtrType = std::shared_ptr<
+      typename std::invoke_result_t<F, IServiceProvider&>::element_type>;
+  const auto typeIndex = std::type_index(typeid(std::shared_ptr<TService>));
+  auto& factories =
+      _factories.emplace(typeIndex, FactoryFunctionCollection{}).first->second;
+  factories.emplace_back(
+      [f = std::move(factory)](IServiceProvider& sp) -> std::any {
+        return SharedPtrType(f(sp));
+      },
+      [](std::any managedData) -> std::any {
+        return std::static_pointer_cast<TService>(
+            std::any_cast<SharedPtrType>(std::move(managedData)));
       },
       ServiceType::Transient);
 }
