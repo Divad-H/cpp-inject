@@ -468,14 +468,14 @@ TEST(ServiceProviderTest, CanGetMultipleServicesForSameInterface) {
   serviceCollection.addSingleton<IService, Service2>();
   serviceCollection.addSingleton<IService, Service3>();
   auto serviceProvider = serviceCollection.build();
-  auto service1 = serviceProvider->getService<IService>();
-  ASSERT_NE(nullptr, dynamic_cast<Service1*>(service1));
+  auto service3 = serviceProvider->getService<IService>();
+  ASSERT_NE(nullptr, dynamic_cast<Service3*>(service3));
   auto services = serviceProvider->getServices<IService>();
   ASSERT_EQ(3, services.size());
   ASSERT_NE(nullptr, dynamic_cast<Service1*>(&services[0].get()));
   ASSERT_NE(nullptr, dynamic_cast<Service2*>(&services[1].get()));
   ASSERT_NE(nullptr, dynamic_cast<Service3*>(&services[2].get()));
-  ASSERT_EQ(service1, &services[0].get());
+  ASSERT_EQ(service3, &services[2].get());
 }
 
 TEST(ServiceProviderTest, CanGetMultipleTransientServicesForSameInterface) {
@@ -484,8 +484,8 @@ TEST(ServiceProviderTest, CanGetMultipleTransientServicesForSameInterface) {
   serviceCollection.addTransient<IService, Service2>();
   serviceCollection.addTransient<IService, Service3>();
   auto serviceProvider = serviceCollection.build();
-  auto service1 = serviceProvider->getTransientService<IService>();
-  ASSERT_NE(nullptr, std::dynamic_pointer_cast<Service1>(service1));
+  auto service3 = serviceProvider->getTransientService<IService>();
+  ASSERT_NE(nullptr, std::dynamic_pointer_cast<Service3>(service3));
   auto services = serviceProvider->getTransientServices<IService>();
   ASSERT_EQ(3, services.size());
   ASSERT_NE(nullptr, dynamic_pointer_cast<Service1>(services[0]));
@@ -541,4 +541,154 @@ TEST(ServiceProviderTest, CanInjectMultipleTransientServices) {
           ->getRequiredService<ServiceRequestingVectorOfTransientServices>();
   ASSERT_EQ(3, service._services.size());
 }
+
+static constexpr size_t numberOfConcurrencyTestIterations = 1000;
+static constexpr size_t numberOfConcurrentIterations = 32;
+
+TEST(ConcurrencyTest, CanHandleConcurrentGetServiceCalls) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addSingleton<LeafService1>();
+  serviceCollection.addSingleton<LeafService2>();
+  serviceCollection.addTransient<LeafService3>();
+  serviceCollection.addTransient<LeafService4>();
+  serviceCollection.addSingleton<ServiceWithMultipleDependencies1>();
+  serviceCollection.addSingleton<ServiceWithMultipleDependencies2>();
+  serviceCollection.addSingleton<ServiceWithMultipleDependencies3>();
+
+  for (size_t i = 0; i < numberOfConcurrencyTestIterations; ++i) {
+    auto serviceProvider = serviceCollection.build();
+    std::atomic<bool> splinlock{false};
+
+    auto worker = [&serviceProvider, &splinlock]() {
+      while (!splinlock.load(std::memory_order_relaxed))
+        ;
+      auto& rootServiceA =
+          serviceProvider
+              ->getRequiredService<ServiceWithMultipleDependencies3>();
+      auto& service2A =
+          serviceProvider
+              ->getRequiredService<ServiceWithMultipleDependencies2>();
+      auto& service1A =
+          serviceProvider
+              ->getRequiredService<ServiceWithMultipleDependencies1>();
+      auto& rootServiceB =
+          serviceProvider
+              ->getRequiredService<ServiceWithMultipleDependencies3>();
+      auto& service2B =
+          serviceProvider
+              ->getRequiredService<ServiceWithMultipleDependencies2>();
+      auto& service1B =
+          serviceProvider
+              ->getRequiredService<ServiceWithMultipleDependencies1>();
+
+      return std::make_tuple(&service1A, &service2A, &rootServiceA, &service1B,
+                             &service2B, &rootServiceB);
+    };
+
+    std::vector<std::future<decltype(worker())>> resultFurtures;
+    std::vector<decltype(worker())> results;
+    resultFurtures.reserve(numberOfConcurrentIterations);
+    results.reserve(numberOfConcurrentIterations);
+    for (int j = 0; j < numberOfConcurrentIterations; ++j)
+      resultFurtures.emplace_back(std::async(std::launch::async, worker));
+    splinlock.store(true, std::memory_order_relaxed);
+
+    for (int j = 0; j < numberOfConcurrentIterations; ++j) {
+      results.emplace_back(resultFurtures[j].get());
+
+      ASSERT_EQ(&std::get<2>(results[j])->_serviceWithMultipleDependencies2,
+                std::get<1>(results[j]));
+      ASSERT_EQ(&std::get<1>(results[j])->_serviceWithMultipleDependencies1,
+                std::get<0>(results[j]));
+      ASSERT_EQ(&std::get<5>(results[j])->_serviceWithMultipleDependencies2,
+                std::get<4>(results[j]));
+      ASSERT_EQ(&std::get<4>(results[j])->_serviceWithMultipleDependencies1,
+                std::get<3>(results[j]));
+      ASSERT_EQ(std::get<5>(results[j]), std::get<2>(results[j]));
+      ASSERT_EQ(std::get<4>(results[j]), std::get<1>(results[j]));
+      ASSERT_EQ(&std::get<4>(results[j])->_serviceWithMultipleDependencies1,
+                &std::get<1>(results[j])->_serviceWithMultipleDependencies1);
+      if (j > 0) {
+        ASSERT_EQ(std::get<0>(results[j - 1]), std::get<0>(results[j]));
+        ASSERT_EQ(std::get<1>(results[j - 1]), std::get<1>(results[j]));
+        ASSERT_EQ(std::get<2>(results[j - 1]), std::get<2>(results[j]));
+        ASSERT_EQ(std::get<3>(results[j - 1]), std::get<3>(results[j]));
+        ASSERT_EQ(std::get<4>(results[j - 1]), std::get<4>(results[j]));
+        ASSERT_EQ(std::get<5>(results[j - 1]), std::get<5>(results[j]));
+      }
+    }
+  }
+}
+
+TEST(ConcurrencyTest, CanHandleConcurrentScopedGetServiceCalls) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addSingleton<LeafService1>();
+  serviceCollection.addSingleton<LeafService2>();
+  serviceCollection.addTransient<LeafService3>();
+  serviceCollection.addTransient<LeafService4>();
+  serviceCollection.addSingleton<ServiceWithMultipleDependencies1>();
+  serviceCollection.addScoped<ServiceWithMultipleDependencies2>();
+  serviceCollection.addScoped<ServiceWithMultipleDependencies3>();
+
+  for (size_t i = 0; i < numberOfConcurrencyTestIterations; ++i) {
+    auto serviceProvider = serviceCollection.build();
+    auto scope1 = serviceProvider->createScope();
+    auto scope2 = serviceProvider->createScope();
+    std::atomic<bool> splinlock{false};
+
+    auto worker = [&serviceProvider, &scope1, &scope2, &splinlock]() {
+      while (!splinlock.load(std::memory_order_relaxed))
+        ;
+      auto& rootServiceA =
+          scope1->getRequiredService<ServiceWithMultipleDependencies3>();
+      auto& service2A =
+          scope1->getRequiredService<ServiceWithMultipleDependencies2>();
+      auto& service1A =
+          scope1->getRequiredService<ServiceWithMultipleDependencies1>();
+      auto& rootServiceB =
+          scope2->getRequiredService<ServiceWithMultipleDependencies3>();
+      auto& service2B =
+          scope2->getRequiredService<ServiceWithMultipleDependencies2>();
+      auto& service1B =
+          scope2->getRequiredService<ServiceWithMultipleDependencies1>();
+
+      return std::make_tuple(&service1A, &service2A, &rootServiceA, &service1B,
+                             &service2B, &rootServiceB);
+    };
+
+    std::vector<std::future<decltype(worker())>> resultFurtures;
+    std::vector<decltype(worker())> results;
+    resultFurtures.reserve(numberOfConcurrentIterations);
+    results.reserve(numberOfConcurrentIterations);
+    for (int j = 0; j < numberOfConcurrentIterations; ++j)
+      resultFurtures.emplace_back(std::async(std::launch::async, worker));
+    splinlock.store(true, std::memory_order_relaxed);
+
+    for (int j = 0; j < numberOfConcurrentIterations; ++j) {
+      results.emplace_back(resultFurtures[j].get());
+
+      ASSERT_EQ(&std::get<2>(results[j])->_serviceWithMultipleDependencies2,
+                std::get<1>(results[j]));
+      ASSERT_EQ(&std::get<1>(results[j])->_serviceWithMultipleDependencies1,
+                std::get<0>(results[j]));
+      ASSERT_EQ(&std::get<5>(results[j])->_serviceWithMultipleDependencies2,
+                std::get<4>(results[j]));
+      ASSERT_EQ(&std::get<4>(results[j])->_serviceWithMultipleDependencies1,
+                std::get<3>(results[j]));
+      ASSERT_NE(std::get<5>(results[j]), std::get<2>(results[j]));
+      ASSERT_NE(std::get<4>(results[j]), std::get<1>(results[j]));
+      ASSERT_EQ(&std::get<4>(results[j])->_serviceWithMultipleDependencies1,
+                &std::get<1>(results[j])->_serviceWithMultipleDependencies1);
+      if (j > 0) {
+        ASSERT_EQ(std::get<0>(results[j - 1]), std::get<0>(results[j]));
+        ASSERT_EQ(std::get<1>(results[j - 1]), std::get<1>(results[j]));
+        ASSERT_EQ(std::get<2>(results[j - 1]), std::get<2>(results[j]));
+        ASSERT_EQ(std::get<3>(results[j - 1]), std::get<3>(results[j]));
+        ASSERT_EQ(std::get<4>(results[j - 1]), std::get<4>(results[j]));
+        ASSERT_EQ(std::get<5>(results[j - 1]), std::get<5>(results[j]));
+      }
+    }
+  }
+}
+
 }  // namespace DependencyInjectionTest

@@ -1,8 +1,11 @@
 #pragma once
 
 #include <any>
+#include <atomic>
 #include <functional>
+#include <future>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -56,33 +59,44 @@ class ServiceCollection {
           type(type) {}
   };
   using FactoryFunctionCollection = std::vector<ServiceDescription>;
-
   std::unordered_map<std::type_index, FactoryFunctionCollection> _factories;
+
+  struct ConcurrentService {
+    std::atomic<bool> initialized{false};
+    std::promise<std::any> servicePromise;
+    std::shared_future<std::any> serviceFuture{servicePromise.get_future()};
+  };
 
   class ServiceProvider : public IServiceProviderRoot {
     const std::unordered_map<std::type_index, FactoryFunctionCollection>
         _factories;
+    mutable std::mutex _initializationOrderMutex;
     std::vector<std::any> _initializationOrder;
-    std::unordered_map<std::type_index, std::vector<std::any>> _instances;
+    mutable std::mutex _instancesMutex;
+    std::unordered_map<std::type_index, std::unique_ptr<ConcurrentService[]>>
+        _instances;
 
     class ScopedServiceProvider : public IServiceProvider {
       ServiceProvider& _parent;
+      mutable std::mutex _initializationOrderMutex;
       std::vector<std::any> _initializationOrder;
-      std::unordered_map<std::type_index, std::vector<std::any>> _instances;
+      mutable std::mutex _instancesMutex;
+      std::unordered_map<std::type_index, std::unique_ptr<ConcurrentService[]>>
+          _instances;
 
      public:
       ScopedServiceProvider(ServiceProvider& parent);
       ~ScopedServiceProvider();
       std::any getService(std::type_index type) override;
       std::vector<std::any> getServices(std::type_index type) override;
-    };
 
+      template <class TServiceProvider>
     static std::any getService(
-        const std::pair<std::type_index, FactoryFunctionCollection>& factories,
-        std::unordered_map<std::type_index, std::vector<std::any>>&
-            providerInstances,
-        std::vector<std::any>& initializationOrder,
-        IServiceProvider& serviceProvider, size_t index);
+          const std::pair<std::type_index, FactoryFunctionCollection>&
+              factories,
+          TServiceProvider& serviceProviderForThisService,
+          IServiceProvider& serviceProviderForDependentServices, size_t index);
+    };
 
    public:
     ServiceProvider(
@@ -224,35 +238,43 @@ std::unique_ptr<IServiceProviderRoot> ServiceCollection::build() {
   return std::make_unique<ServiceProvider>(_factories);
 }
 
-std::any ServiceCollection::ServiceProvider::getService(
+template <class TServiceProvider>
+std::any ServiceCollection::ServiceProvider::ScopedServiceProvider::getService(
     const std::pair<std::type_index, FactoryFunctionCollection>& factories,
-    std::unordered_map<std::type_index, std::vector<std::any>>&
-        providerInstances,
-    std::vector<std::any>& initializationOrder,
-    IServiceProvider& serviceProvider, size_t index) {
+    TServiceProvider& serviceProviderForThisService,
+    IServiceProvider& serviceProviderForDependentSerices, size_t index) {
   const auto& desc = factories.second.at(index);
   if (desc.type == ServiceType::Singleton || desc.type == ServiceType::Scoped) {
-    auto instances =
-        providerInstances.emplace(factories.first, std::vector<std::any>{});
-    if (instances.second)
-      instances.first->second.resize(factories.second.size());
-    if (!instances.first->second.at(index).has_value()) {
-      auto it = instances.first->second.emplace(
-          std::next(instances.first->second.begin(), index),
-          desc.create(serviceProvider));
-      initializationOrder.emplace_back(*it);
+    std::unique_lock instancesLock(
+        serviceProviderForThisService._instancesMutex);
+    auto instancesPair = serviceProviderForThisService._instances.emplace(
+        factories.first, std::unique_ptr<ConcurrentService[]>{});
+    if (instancesPair.second)
+      instancesPair.first->second =
+          std::make_unique<ConcurrentService[]>(factories.second.size());
+    ConcurrentService* instances = instancesPair.first->second.get();
+    instancesLock.unlock();
+    bool expected = false;
+    if (instances[index].initialized.compare_exchange_strong(expected, true)) {
+      instances[index].servicePromise.set_value(
+          desc.create(serviceProviderForDependentSerices));
+      std::scoped_lock lock{
+          serviceProviderForThisService._initializationOrderMutex};
+      serviceProviderForThisService._initializationOrder.emplace_back(
+          instances[index].serviceFuture.get());
     }
-    return desc.convert(instances.first->second.at(index));
+    return desc.convert(instances[index].serviceFuture.get());
   } else  // ServiceType::Transient
   {
-    return desc.convert(desc.create(serviceProvider));
+    return desc.convert(desc.create(serviceProviderForDependentSerices));
   }
 }
 
 std::any ServiceCollection::ServiceProvider::getService(std::type_index type) {
   auto factoryIt = _factories.find(type);
   if (factoryIt == _factories.end()) return std::any();
-  return getService(*factoryIt, _instances, _initializationOrder, *this, 0);
+  return ScopedServiceProvider::getService(*factoryIt, *this, *this,
+                                           factoryIt->second.size() - 1);
 }
 
 std::vector<std::any> ServiceCollection::ServiceProvider::getServices(
@@ -262,7 +284,7 @@ std::vector<std::any> ServiceCollection::ServiceProvider::getServices(
   if (factoryIt == _factories.end()) return res;
   for (size_t i = 0; i < factoryIt->second.size(); ++i)
     res.emplace_back(
-        getService(*factoryIt, _instances, _initializationOrder, *this, i));
+        ScopedServiceProvider::getService(*factoryIt, *this, *this, i));
   return res;
 }
 
@@ -291,12 +313,12 @@ std::any ServiceCollection::ServiceProvider::ScopedServiceProvider::getService(
   auto factoryIt = _parent._factories.find(type);
   if (factoryIt == _parent._factories.end()) return std::any();
   const auto& desc = factoryIt->second.front();
-  return ServiceProvider::getService(
-      *factoryIt,
-      desc.type == ServiceType::Scoped ? _instances : _parent._instances,
-      desc.type == ServiceType::Scoped ? _initializationOrder
-                                       : _parent._initializationOrder,
-      *this, 0);
+  return desc.type == ServiceType::Scoped
+             ? getService(*factoryIt, *this, *this,
+                          factoryIt->second.size() - 1)
+             : getService(*factoryIt, _parent, *this,
+                          factoryIt->second.size() - 1);
+  ;
 }
 
 std::vector<std::any>
@@ -307,12 +329,9 @@ ServiceCollection::ServiceProvider::ScopedServiceProvider::getServices(
   if (factoryIt == _parent._factories.end()) return {};
   for (size_t i = 0; i < factoryIt->second.size(); ++i) {
     const auto& desc = factoryIt->second[i];
-    res.emplace_back(ServiceProvider::getService(
-        *factoryIt,
-        desc.type == ServiceType::Scoped ? _instances : _parent._instances,
-        desc.type == ServiceType::Scoped ? _initializationOrder
-                                         : _parent._initializationOrder,
-        *this, 0));
+    res.emplace_back(desc.type == ServiceType::Scoped
+                         ? getService(*factoryIt, *this, *this, i)
+                         : getService(*factoryIt, _parent, *this, i));
   }
   return res;
 }
