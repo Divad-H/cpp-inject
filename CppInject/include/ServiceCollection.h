@@ -21,19 +21,50 @@
 
 namespace CppInject {
 
+/// <summary>
+/// A builder for a service provider. This class is used to collect descriptions
+/// for the creation and life time of services. The create function builds a
+/// service provider.
+/// </summary>
 class ServiceCollection {
  public:
+  /// <summary>
+  /// Register a singleton service
+  /// </summary>
+  /// <typeparam name="TService">The type of the service</typeparam>
+  /// <typeparam name="TImplementation">The type of the implementation -
+  /// TService must be a base of TImplementation</typeparam>
   template <class TService, class TImplementation = TService,
             typename = typename std::enable_if_t<
                 std::is_base_of_v<TService, TImplementation>>>
   void addSingleton();
 
+  /// <summary>
+  /// Register a singleton service using a factory
+  /// </summary>
+  /// <typeparam name="TService">The type of the service</typeparam>
+  /// <typeparam name="F">
+  /// The type of the factory function:
+  /// (IServiceProvider&amp;) -> std::unique_ptr &lt; TImplementation &gt;
+  /// </typeparam>
+  /// <param name="factory">The factory function that creates the service
+  /// instance</param>
   template <class TService, typename F,
             typename = typename std::enable_if_t<std::is_base_of_v<
                 TService, typename std::invoke_result_t<
                               F, IServiceProvider&>::element_type>>>
   void addSingleton(F&& factory);
 
+  /// <summary>
+  /// Register a singleton service using a factory
+  /// </summary>
+  /// <typeparam name="F">
+  /// The type of the factory function:
+  /// (IServiceProvider&amp;) -> std::unique_ptr &lt; TImplementation &gt;
+  /// </typeparam>
+  /// <typeparam name="TService">The type of the service</typeparam>
+  /// <param name="factory">The factory function that creates the service
+  /// instance</param>
   template <typename F, typename = typename std::invoke_result_t<
                             F, IServiceProvider&>::element_type>
   void addSingleton(F&& factory);
@@ -53,32 +84,78 @@ class ServiceCollection {
                 std::is_base_of_v<TService, TImplementation>>>
   void addSingleton(std::shared_ptr<TImplementation> existingService);
 
+  /// <summary>
+  /// Register a scoped service
+  /// </summary>
+  /// <typeparam name="TService">The type of the service</typeparam>
+  /// <typeparam name="TImplementation">The type of the implementation -
+  /// TService must be a base of TImplementation</typeparam>
   template <class TService, class TImplementation = TService,
             typename = typename std::enable_if_t<
                 std::is_base_of_v<TService, TImplementation>>>
   void addScoped();
 
+  /// <summary>
+  /// Register a scoped service using a factory
+  /// </summary>
+  /// <typeparam name="TService">The type of the service</typeparam>
+  /// <typeparam name="F">
+  /// The type of the factory function:
+  /// (IServiceProvider&amp;) -> std::unique_ptr &lt; TImplementation &gt;
+  /// </typeparam>
+  /// <param name="factory">The factory function that creates the service
+  /// instance</param>
   template <class TService, typename F,
             typename = typename std::enable_if_t<std::is_base_of_v<
                 TService, typename std::invoke_result_t<
                               F, IServiceProvider&>::element_type>>>
   void addScoped(F&& factory);
 
+  /// <summary>
+  /// Register a scoped service using a factory
+  /// </summary>
+  /// <typeparam name="F">
+  /// The type of the factory function:
+  /// (IServiceProvider&amp;) -> std::unique_ptr &lt; TImplementation &gt;
+  /// </typeparam>
+  /// <typeparam name="TService">The type of the service</typeparam>
+  /// <param name="factory">The factory function that creates the service
+  /// instance</param>
   template <typename F, typename = typename std::invoke_result_t<
                             F, IServiceProvider&>::element_type>
   void addScoped(F&& factory);
 
+  /// <summary>
+  /// Register a transient service
+  /// </summary>
+  /// <typeparam name="TService">The type of the service</typeparam>
+  /// <typeparam name="TImplementation">The type of the implementation -
+  /// TService must be a base of TImplementation</typeparam>
   template <class TService, class TImplementation = TService,
             typename = typename std::enable_if_t<
                 std::is_base_of_v<TService, TImplementation>>>
   void addTransient();
 
+  /// <summary>
+  /// Register a transient service using a factory
+  /// </summary>
+  /// <typeparam name="TService">The type of the service</typeparam>
+  /// <typeparam name="F">
+  /// The type of the factory function:
+  /// (IServiceProvider&amp;) -> std::unique_ptr &lt; TImplementation &gt;
+  /// </typeparam>
+  /// <param name="factory">The factory function that creates the service
+  /// instance</param>
   template <class TService, typename F,
             typename = typename std::enable_if_t<std::is_base_of_v<
                 TService, typename std::invoke_result_t<
                               F, IServiceProvider&>::element_type>>>
   void addTransient(F&& factory);
 
+  /// <summary>
+  /// Create a service provider from the service collection
+  /// </summary>
+  /// <returns>A unique_ptr to the service provider instance</returns>
   std::unique_ptr<IServiceProviderRoot> build();
 
  private:
