@@ -18,6 +18,12 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\CppInject\ConstructorFinder.h" />
+    <ClInclude Include="include\CppInject\IServiceProvider.h" />
+    <ClInclude Include="include\CppInject\ServiceCollection.h" />
+    <ClInclude Include="include\CppInject\TypeTraits.h" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
@@ -147,12 +153,6 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
-  <ItemGroup>
-    <ClInclude Include="include\ConstructorFinder.h" />
-    <ClInclude Include="include\IServiceProvider.h" />
-    <ClInclude Include="include\ServiceCollection.h" />
-    <ClInclude Include="include\TypeTraits.h" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
