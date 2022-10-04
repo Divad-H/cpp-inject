@@ -293,7 +293,7 @@ class ServiceCollection {
       using Type = std::tuple_element_t<I, Tuple>;
       return createInternal<Tuple, I + 1, Args...>(
           serviceProvider, std::forward<Args>(args)...,
-          getService<Type>(serviceProvider));
+          getService<std::remove_reference_t<Type>>(serviceProvider));
     }
 
    public:

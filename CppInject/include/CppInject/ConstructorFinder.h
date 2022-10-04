@@ -6,11 +6,11 @@
 namespace CppInject {
 namespace detail {
 template <class T>
-T pretendToCreateAnything();
+T& pretendToCreateAnything();
 
 template <typename T, int ArgIndex>
 struct OverloadResolutionHelper {
-  friend auto functionWithReturnTypeOfArg(
+  friend auto& functionWithReturnTypeOfArg(
       OverloadResolutionHelper<T, ArgIndex>);
 };
 
@@ -20,7 +20,7 @@ template <typename T, typename TArg, int ArgIndex,
               !std::is_same_v<std::remove_cv_t<std::remove_reference_t<T>>,
                               std::remove_cv_t<std::remove_reference_t<TArg>>>>>
 struct FunctionWithReturnTypeOfArgWrapper {
-  friend auto functionWithReturnTypeOfArg(
+  friend auto& functionWithReturnTypeOfArg(
       OverloadResolutionHelper<T, ArgIndex>) {
     return pretendToCreateAnything<TArg>();
   }

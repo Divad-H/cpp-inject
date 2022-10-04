@@ -620,7 +620,7 @@ struct CheckService {
 
 TEST(ServiceProviderTest, KeepsFactoryLambdaCapturesInServiceProvider) {
   ServiceCollection serviceCollection;
-  { 
+  {
     auto checker = std::make_shared<DestructorCheck>();
     serviceCollection.addSingleton([checker](IServiceProvider&) {
       return std::make_unique<CheckService>(checker->value);
@@ -629,6 +629,32 @@ TEST(ServiceProviderTest, KeepsFactoryLambdaCapturesInServiceProvider) {
   auto serviceProvider = serviceCollection.build();
   auto service = serviceProvider->getRequiredService<CheckService>();
   ASSERT_EQ(1, service.value);
+}
+
+class IMyInterface {
+ protected:
+  ~IMyInterface() = default;
+
+ public:
+  virtual void foo() = 0;
+};
+class MyImplementation : public IMyInterface {
+ public:
+  void foo() override{};
+};
+struct Consumer {
+  IMyInterface& _myInterface;
+  Consumer(IMyInterface& myInterface) : _myInterface(myInterface){};
+};
+
+TEST(ServiceProviderTest, CanInjectInterface) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addSingleton<IMyInterface, MyImplementation>();
+  serviceCollection.addSingleton<Consumer>();
+  auto sp = serviceCollection.build();
+  auto& consumer = sp->getRequiredService<Consumer>();
+  auto& interface = sp->getRequiredService<IMyInterface>();
+  ASSERT_EQ(&consumer._myInterface, &interface);
 }
 
 static constexpr size_t numberOfConcurrencyTestIterations = 1000;
