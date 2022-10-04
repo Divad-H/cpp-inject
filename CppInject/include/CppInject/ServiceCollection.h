@@ -38,7 +38,7 @@ class ServiceCollection {
   template <class TService, class TImplementation = TService,
             typename = typename std::enable_if_t<
                 std::is_base_of_v<TService, TImplementation>>>
-  void addSingleton();
+  inline void addSingleton();
 
   /// <summary>
   /// Register a singleton service using a factory
@@ -54,7 +54,7 @@ class ServiceCollection {
             typename = typename std::enable_if_t<std::is_base_of_v<
                 TService, typename std::invoke_result_t<
                               F, IServiceProvider&>::element_type>>>
-  void addSingleton(F&& factory);
+  inline void addSingleton(F&& factory);
 
   /// <summary>
   /// Register a singleton service using a factory
@@ -68,7 +68,7 @@ class ServiceCollection {
   /// instance</param>
   template <typename F, typename = typename std::invoke_result_t<
                             F, IServiceProvider&>::element_type>
-  void addSingleton(F&& factory);
+  inline void addSingleton(F&& factory);
 
   /// <summary>
   /// Add an existing service to the ServiceCollection.
@@ -83,7 +83,7 @@ class ServiceCollection {
   template <class TService, typename TImplementation = TService,
             typename = typename std::enable_if_t<
                 std::is_base_of_v<TService, TImplementation>>>
-  void addSingleton(std::shared_ptr<TImplementation> existingService);
+  inline void addSingleton(std::shared_ptr<TImplementation> existingService);
 
   /// <summary>
   /// Register a scoped service
@@ -94,7 +94,7 @@ class ServiceCollection {
   template <class TService, class TImplementation = TService,
             typename = typename std::enable_if_t<
                 std::is_base_of_v<TService, TImplementation>>>
-  void addScoped();
+  inline void addScoped();
 
   /// <summary>
   /// Register a scoped service using a factory
@@ -110,7 +110,7 @@ class ServiceCollection {
             typename = typename std::enable_if_t<std::is_base_of_v<
                 TService, typename std::invoke_result_t<
                               F, IServiceProvider&>::element_type>>>
-  void addScoped(F&& factory);
+  inline void addScoped(F&& factory);
 
   /// <summary>
   /// Register a scoped service using a factory
@@ -124,7 +124,7 @@ class ServiceCollection {
   /// instance</param>
   template <typename F, typename = typename std::invoke_result_t<
                             F, IServiceProvider&>::element_type>
-  void addScoped(F&& factory);
+  inline void addScoped(F&& factory);
 
   /// <summary>
   /// Register a transient service
@@ -135,7 +135,7 @@ class ServiceCollection {
   template <class TService, class TImplementation = TService,
             typename = typename std::enable_if_t<
                 std::is_base_of_v<TService, TImplementation>>>
-  void addTransient();
+  inline void addTransient();
 
   /// <summary>
   /// Register a transient service using a factory
@@ -151,7 +151,7 @@ class ServiceCollection {
             typename = typename std::enable_if_t<std::is_base_of_v<
                 TService, typename std::invoke_result_t<
                               F, IServiceProvider&>::element_type>>>
-  void addTransient(F&& factory);
+  inline void addTransient(F&& factory);
 
   /// <summary>
   /// Create a service provider from the service collection
@@ -187,7 +187,7 @@ class ServiceCollection {
     std::shared_future<std::any> serviceFuture{servicePromise.get_future()};
   };
 
-  class ServiceProvider : public IServiceProviderRoot {
+  class ServiceProvider final : public IServiceProviderRoot {
     const std::unordered_map<std::type_index, FactoryFunctionCollection>
         _factories;
     mutable std::mutex _initializationOrderMutex;
@@ -196,7 +196,7 @@ class ServiceCollection {
     std::unordered_map<std::type_index, std::unique_ptr<ConcurrentService[]>>
         _instances;
 
-    class ScopedServiceProvider : public IServiceProvider {
+    class ScopedServiceProvider final : public IServiceProvider {
       ServiceProvider& _parent;
       mutable std::mutex _initializationOrderMutex;
       std::vector<std::any> _initializationOrder;
@@ -206,12 +206,12 @@ class ServiceCollection {
 
      public:
       ScopedServiceProvider(ServiceProvider& parent);
-      ~ScopedServiceProvider();
-      std::any getService(std::type_index type) override;
-      std::vector<std::any> getServices(std::type_index type) override;
+      inline ~ScopedServiceProvider();
+      inline std::any getService(std::type_index type) final;
+      inline std::vector<std::any> getServices(std::type_index type) final;
 
       template <class TServiceProvider>
-      static std::any getService(
+      inline static std::any getService(
           const std::pair<std::type_index, FactoryFunctionCollection>&
               factories,
           TServiceProvider& serviceProviderForThisService,
@@ -224,11 +224,11 @@ class ServiceCollection {
             factories)
         : _factories(std::move(factories)) {}
 
-    ~ServiceProvider();
+    inline ~ServiceProvider();
 
-    std::any getService(std::type_index type) override;
-    std::vector<std::any> getServices(std::type_index type) override;
-    std::unique_ptr<IServiceProvider> createScope() override;
+    inline std::any getService(std::type_index type) final;
+    inline std::vector<std::any> getServices(std::type_index type) final;
+    inline std::unique_ptr<IServiceProvider> createScope() final;
   };
 
   template <class TService>
@@ -297,7 +297,7 @@ class ServiceCollection {
     }
 
    public:
-    std::shared_ptr<TService> create(IServiceProvider& serviceProvider) {
+    inline std::shared_ptr<TService> create(IServiceProvider& serviceProvider) {
       return createInternal<ConstructorArgsAsTuple<TService>>(serviceProvider);
     }
   };
@@ -305,7 +305,7 @@ class ServiceCollection {
   template <class TService, class TImplementation, ServiceType serviceType,
             typename = typename std::enable_if_t<serviceType !=
                                                  ServiceType::Transient>>
-  void addService();
+  inline void addService();
 
   template <
       class TService, ServiceType serviceType, class F,
@@ -313,12 +313,12 @@ class ServiceCollection {
           serviceType != ServiceType::Transient &&
           std::is_base_of_v<TService, typename std::invoke_result_t<
                                           F, IServiceProvider&>::element_type>>>
-  void addService(F&& factory);
+  inline void addService(F&& factory);
 };
 
 template <class TService, class TImplementation,
           ServiceCollection::ServiceType serviceType, typename>
-void ServiceCollection::addService() {
+inline void ServiceCollection::addService() {
   const auto typeIndex = std::type_index(typeid(TService));
   auto& serviceFactories =
       _factories.emplace(typeIndex, FactoryFunctionCollection{}).first->second;
@@ -335,18 +335,18 @@ void ServiceCollection::addService() {
 }
 
 template <class TService, class TImplementation, typename>
-void ServiceCollection::addSingleton() {
+inline void ServiceCollection::addSingleton() {
   addService<TService, TImplementation, ServiceType::Singleton>();
 }
 
 template <class TService, class TImplementation, typename>
-void ServiceCollection::addScoped() {
+inline void ServiceCollection::addScoped() {
   addService<TService, TImplementation, ServiceType::Scoped>();
 }
 
 template <class TService, ServiceCollection::ServiceType serviceType, class F,
           typename>
-void ServiceCollection::addService(F&& factory) {
+inline void ServiceCollection::addService(F&& factory) {
   using SharedPtrType = std::shared_ptr<
       typename std::invoke_result_t<F, IServiceProvider&>::element_type>;
   const auto typeIndex = std::type_index(typeid(TService));
@@ -364,30 +364,30 @@ void ServiceCollection::addService(F&& factory) {
 }
 
 template <class TService, class F, typename>
-void ServiceCollection::addSingleton(F&& factory) {
+inline void ServiceCollection::addSingleton(F&& factory) {
   addService<TService, ServiceType::Singleton>(std::forward<F>(factory));
 }
 
 template <typename F, typename>
-void ServiceCollection::addSingleton(F&& factory) {
+inline void ServiceCollection::addSingleton(F&& factory) {
   addSingleton<
       typename std::invoke_result_t<F, IServiceProvider&>::element_type, F>(
       std::forward<F>(factory));
 }
 
 template <class TService, class F, typename>
-void ServiceCollection::addScoped(F&& factory) {
+inline void ServiceCollection::addScoped(F&& factory) {
   addService<TService, ServiceType::Scoped>(std::forward<F>(factory));
 }
 
 template <typename F, typename>
-void ServiceCollection::addScoped(F&& factory) {
+inline void ServiceCollection::addScoped(F&& factory) {
   addScoped<typename std::invoke_result_t<F, IServiceProvider&>::element_type,
             F>(std::forward<F>(factory));
 }
 
 template <class TService, typename TImplementation, typename>
-void ServiceCollection::addSingleton(
+inline void ServiceCollection::addSingleton(
     std::shared_ptr<TImplementation> existingService) {
   addService<TService, ServiceType::Singleton>(
       [service = std::move(existingService)](IServiceProvider&) {
@@ -396,7 +396,7 @@ void ServiceCollection::addSingleton(
 }
 
 template <class TService, class TImplementation, typename>
-void ServiceCollection::addTransient() {
+inline void ServiceCollection::addTransient() {
   const auto typeIndex = std::type_index(typeid(std::shared_ptr<TService>));
   auto& factories =
       _factories.emplace(typeIndex, FactoryFunctionCollection{}).first->second;
@@ -414,7 +414,7 @@ void ServiceCollection::addTransient() {
 }
 
 template <class TService, class F, typename>
-void ServiceCollection::addTransient(F&& factory) {
+inline void ServiceCollection::addTransient(F&& factory) {
   using SharedPtrType = std::shared_ptr<
       typename std::invoke_result_t<F, IServiceProvider&>::element_type>;
   const auto typeIndex = std::type_index(typeid(std::shared_ptr<TService>));
@@ -431,12 +431,13 @@ void ServiceCollection::addTransient(F&& factory) {
       ServiceType::Transient);
 }
 
-std::unique_ptr<IServiceProviderRoot> ServiceCollection::build() {
+inline std::unique_ptr<IServiceProviderRoot> ServiceCollection::build() {
   return std::make_unique<ServiceProvider>(_factories);
 }
 
 template <class TServiceProvider>
-std::any ServiceCollection::ServiceProvider::ScopedServiceProvider::getService(
+inline std::any
+ServiceCollection::ServiceProvider::ScopedServiceProvider::getService(
     const std::pair<std::type_index, FactoryFunctionCollection>& factories,
     TServiceProvider& serviceProviderForThisService,
     IServiceProvider& serviceProviderForDependentSerices, size_t index) {
@@ -467,14 +468,15 @@ std::any ServiceCollection::ServiceProvider::ScopedServiceProvider::getService(
   }
 }
 
-std::any ServiceCollection::ServiceProvider::getService(std::type_index type) {
+inline std::any ServiceCollection::ServiceProvider::getService(
+    std::type_index type) {
   auto factoryIt = _factories.find(type);
   if (factoryIt == _factories.end()) return std::any();
   return ScopedServiceProvider::getService(*factoryIt, *this, *this,
                                            factoryIt->second.size() - 1);
 }
 
-std::vector<std::any> ServiceCollection::ServiceProvider::getServices(
+inline std::vector<std::any> ServiceCollection::ServiceProvider::getServices(
     std::type_index type) {
   std::vector<std::any> res;
   auto factoryIt = _factories.find(type);
@@ -485,27 +487,28 @@ std::vector<std::any> ServiceCollection::ServiceProvider::getServices(
   return res;
 }
 
-std::unique_ptr<IServiceProvider>
+inline std::unique_ptr<IServiceProvider>
 ServiceCollection::ServiceProvider::createScope() {
   return std::make_unique<ScopedServiceProvider>(*this);
 }
 
-ServiceCollection::ServiceProvider::~ServiceProvider() {
+inline ServiceCollection::ServiceProvider::~ServiceProvider() {
   _instances.clear();
   while (!_initializationOrder.empty()) _initializationOrder.pop_back();
 }
 
-ServiceCollection::ServiceProvider::ScopedServiceProvider::
+inline ServiceCollection::ServiceProvider::ScopedServiceProvider::
     ScopedServiceProvider(ServiceProvider& parent)
     : _parent(parent) {}
 
-ServiceCollection::ServiceProvider::ScopedServiceProvider::
+inline ServiceCollection::ServiceProvider::ScopedServiceProvider::
     ~ScopedServiceProvider() {
   _instances.clear();
   while (!_initializationOrder.empty()) _initializationOrder.pop_back();
 }
 
-std::any ServiceCollection::ServiceProvider::ScopedServiceProvider::getService(
+inline std::any
+ServiceCollection::ServiceProvider::ScopedServiceProvider::getService(
     std::type_index type) {
   auto factoryIt = _parent._factories.find(type);
   if (factoryIt == _parent._factories.end()) return std::any();
@@ -518,7 +521,7 @@ std::any ServiceCollection::ServiceProvider::ScopedServiceProvider::getService(
   ;
 }
 
-std::vector<std::any>
+inline std::vector<std::any>
 ServiceCollection::ServiceProvider::ScopedServiceProvider::getServices(
     std::type_index type) {
   std::vector<std::any> res;
