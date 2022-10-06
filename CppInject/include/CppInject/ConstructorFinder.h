@@ -62,8 +62,9 @@ struct ConstructorArgsAsTupleIntern;
 template <typename T, int... ArgIndices>
 struct ConstructorArgsAsTupleIntern<T,
                                     std::integer_sequence<int, ArgIndices...>> {
-  using TupleType = std::tuple<decltype(functionWithReturnTypeOfArg(
-      OverloadResolutionHelper<T, ArgIndices>{}))...>;
+  using TupleType =
+      std::tuple<std::remove_reference_t<decltype(functionWithReturnTypeOfArg(
+          OverloadResolutionHelper<T, ArgIndices>{}))>...>;
 };
 }  // namespace detail
 
