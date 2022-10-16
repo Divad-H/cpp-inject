@@ -657,6 +657,29 @@ TEST(ServiceProviderTest, CanInjectInterface) {
   ASSERT_EQ(&consumer._myInterface, &interface);
 }
 
+struct InjectServiceProvider {
+  IServiceProvider& _serviceProvider;
+  InjectServiceProvider(IServiceProvider& serviceProvider)
+      : _serviceProvider(serviceProvider) {}
+};
+
+TEST(ServiceProviderTest, CanInjectServiceProvider) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addSingleton<InjectServiceProvider>();
+  auto sp = serviceCollection.build();
+  auto& instance = sp->getRequiredService<InjectServiceProvider>();
+  ASSERT_EQ(&instance._serviceProvider, sp.get());
+}
+
+TEST(ServiceProviderTest, CanInjectServiceProviderScope) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addScoped<InjectServiceProvider>();
+  auto sp = serviceCollection.build();
+  auto scope = sp->createScope();
+  auto& instance = scope->getRequiredService<InjectServiceProvider>();
+  ASSERT_EQ(&instance._serviceProvider, scope.get());
+}
+
 static constexpr size_t numberOfConcurrencyTestIterations = 1000;
 static constexpr size_t numberOfConcurrentIterations = 32;
 

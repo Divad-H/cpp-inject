@@ -234,6 +234,12 @@ class ServiceCollection {
   template <class TService>
   class ServiceFactory {
     template <class T>
+    inline typename std::enable_if_t<std::is_same_v<IServiceProvider, T>, T&>
+    getService(IServiceProvider& serviceProvider) {
+      return serviceProvider;
+    }
+
+    template <class T>
     inline
         typename std::enable_if_t<TypeTraits::IsVector<T>::value &&
                                       TypeTraits::IsSharedPointer<std::decay_t<
@@ -272,7 +278,8 @@ class ServiceCollection {
 
     template <class T>
     inline std::enable_if_t<!TypeTraits::IsSharedPointer<T>::value &&
-                                !TypeTraits::IsVector<T>::value,
+                                !TypeTraits::IsVector<T>::value &&
+                                !std::is_same_v<IServiceProvider, T>,
                             T&>
     getService(IServiceProvider& serviceProvider) {
       return std::any_cast<std::reference_wrapper<T>>(
