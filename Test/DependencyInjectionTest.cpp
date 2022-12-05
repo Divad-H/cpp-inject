@@ -693,6 +693,19 @@ TEST(ServiceProviderTest, CanInjectConstReference) {
   ASSERT_NE(nullptr, instance);
 }
 
+struct ServiceWithConstDependencies {
+  ServiceWithConstDependencies(
+      ServiceVector<const LeafService1>&& dependencies) {}
+};
+TEST(ServiceProviderTest, CanInjectVectorOfConstReferences) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addSingleton<ServiceWithConstDependencies>();
+  serviceCollection.addSingleton<LeafService1>();
+  auto sp = serviceCollection.build();
+  auto* instance = sp->getService<ServiceWithConstDependencies>();
+  ASSERT_NE(nullptr, instance);
+}
+
 static constexpr size_t numberOfConcurrencyTestIterations = 1000;
 static constexpr size_t numberOfConcurrentIterations = 32;
 

@@ -265,7 +265,9 @@ class ServiceCollection {
       auto servicesAny = serviceProvider.getServices(
           std::type_index(typeid(std::decay_t<typename T::value_type::type>)));
       for (auto& service : servicesAny)
-        services.emplace_back(std::any_cast<T::value_type>(service));
+        services.emplace_back(
+            std::any_cast<std::reference_wrapper<
+                std::remove_const_t<T::value_type::type>>>(service));
       return services;
     }
 
