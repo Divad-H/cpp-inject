@@ -22,7 +22,7 @@ template <typename T, typename TArg, int ArgIndex,
 struct FunctionWithReturnTypeOfArgWrapper {
   friend auto& functionWithReturnTypeOfArg(
       OverloadResolutionHelper<T, ArgIndex>) {
-    return pretendToCreateAnything<TArg>();
+    return pretendToCreateAnything<std::remove_cv_t<TArg>>();
   }
 };
 

@@ -680,6 +680,19 @@ TEST(ServiceProviderTest, CanInjectServiceProviderScope) {
   ASSERT_EQ(&instance._serviceProvider, scope.get());
 }
 
+struct ServiceWithConstDependency {
+  ServiceWithConstDependency(const LeafService1& dependency) {}
+};
+
+TEST(ServiceProviderTest, CanInjectConstReference) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addSingleton<ServiceWithConstDependency>();
+  serviceCollection.addSingleton<LeafService1>();
+  auto sp = serviceCollection.build();
+  auto* instance = sp->getService<ServiceWithConstDependency>();
+  ASSERT_NE(nullptr, instance);
+}
+
 static constexpr size_t numberOfConcurrencyTestIterations = 1000;
 static constexpr size_t numberOfConcurrentIterations = 32;
 
