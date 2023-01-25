@@ -706,6 +706,118 @@ TEST(ServiceProviderTest, CanInjectVectorOfConstReferences) {
   ASSERT_NE(nullptr, instance);
 }
 
+TEST(ServiceProviderTest, CanAddSingletonByConversion) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addSingleton<MyImplementation>();
+  serviceCollection.addExistingSingleton<IMyInterface>(
+      [](auto& sp) -> MyImplementation& {
+        return sp.getRequiredService<MyImplementation>();
+      });
+  auto sp = serviceCollection.build();
+  auto* instance = sp->getService<IMyInterface>();
+  ASSERT_NE(nullptr, instance);
+  auto* concrete = sp->getService<MyImplementation>();
+  ASSERT_EQ(instance, concrete);
+}
+
+TEST(ServiceProviderTest, CanAddSingletonByConversionWithDeductedType) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addSingleton<MyImplementation>();
+  serviceCollection.addExistingSingleton([](auto& sp) -> IMyInterface& {
+    return sp.getRequiredService<MyImplementation>();
+  });
+  auto sp = serviceCollection.build();
+  auto* instance = sp->getService<IMyInterface>();
+  ASSERT_NE(nullptr, instance);
+  auto* concrete = sp->getService<MyImplementation>();
+  ASSERT_EQ(instance, concrete);
+}
+
+TEST(ServiceProviderTest, CanInjectConvertedSingleton) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addSingleton<MyImplementation>();
+  serviceCollection.addExistingSingleton<IMyInterface>(
+      [](auto& sp) -> MyImplementation& {
+        return sp.getRequiredService<MyImplementation>();
+      });
+  serviceCollection.addSingleton<Consumer>();
+  auto sp = serviceCollection.build();
+  auto* instance = sp->getService<Consumer>();
+  ASSERT_NE(nullptr, instance);
+  auto* concrete = sp->getService<MyImplementation>();
+  ASSERT_EQ(&instance->_myInterface, concrete);
+  auto* interface = sp->getService<IMyInterface>();
+  ASSERT_EQ(interface, concrete);
+}
+
+TEST(ServiceProviderTest, CanAddScopedByConversion) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addScoped<MyImplementation>();
+  serviceCollection.addExistingScoped<IMyInterface>(
+      [](auto& sp) -> MyImplementation& {
+        return sp.getRequiredService<MyImplementation>();
+      });
+  auto sp = serviceCollection.build();
+  auto scope1 = sp->createScope();
+  auto scope2 = sp->createScope();
+  auto* instance1 = scope1->getService<IMyInterface>();
+  ASSERT_NE(nullptr, instance1);
+  auto* concrete1 = scope1->getService<MyImplementation>();
+  ASSERT_EQ(instance1, concrete1);
+  auto* instance2 = scope2->getService<IMyInterface>();
+  ASSERT_NE(nullptr, instance2);
+  auto* concrete2 = scope2->getService<MyImplementation>();
+  ASSERT_EQ(instance2, concrete2);
+  ASSERT_NE(instance1, instance2);
+}
+
+TEST(ServiceProviderTest, CanAddScopedByConversionWithDeductedType) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addScoped<MyImplementation>();
+  serviceCollection.addExistingScoped([](auto& sp) -> IMyInterface& {
+    return sp.getRequiredService<MyImplementation>();
+  });
+  auto sp = serviceCollection.build();
+  auto scope1 = sp->createScope();
+  auto scope2 = sp->createScope();
+  auto* instance1 = scope1->getService<IMyInterface>();
+  ASSERT_NE(nullptr, instance1);
+  auto* concrete1 = scope1->getService<MyImplementation>();
+  ASSERT_EQ(instance1, concrete1);
+  auto* instance2 = scope2->getService<IMyInterface>();
+  ASSERT_NE(nullptr, instance2);
+  auto* concrete2 = scope2->getService<MyImplementation>();
+  ASSERT_EQ(instance2, concrete2);
+  ASSERT_NE(instance1, instance2);
+}
+
+TEST(ServiceProviderTest, CanInjectConvertedScoped) {
+  ServiceCollection serviceCollection;
+  serviceCollection.addScoped<MyImplementation>();
+  serviceCollection.addExistingScoped<IMyInterface>(
+      [](auto& sp) -> MyImplementation& {
+        return sp.getRequiredService<MyImplementation>();
+      });
+  serviceCollection.addScoped<Consumer>();
+  auto sp = serviceCollection.build();
+  auto scope1 = sp->createScope();
+  auto scope2 = sp->createScope();
+  auto* instance1 = scope1->getService<Consumer>();
+  ASSERT_NE(nullptr, instance1);
+  auto* concrete1 = scope1->getService<MyImplementation>();
+  ASSERT_EQ(&instance1->_myInterface, concrete1);
+  auto* interface1 = scope1->getService<IMyInterface>();
+  ASSERT_EQ(interface1, concrete1);
+  auto* instance2 = scope2->getService<Consumer>();
+  ASSERT_NE(nullptr, instance2);
+  auto* concrete2 = scope2->getService<MyImplementation>();
+  ASSERT_EQ(&instance2->_myInterface, concrete2);
+  auto* interface2 = scope2->getService<IMyInterface>();
+  ASSERT_EQ(interface2, concrete2);
+  ASSERT_NE(instance1, instance2);
+  ASSERT_NE(concrete1, concrete2);
+}
+
 static constexpr size_t numberOfConcurrencyTestIterations = 1000;
 static constexpr size_t numberOfConcurrentIterations = 32;
 

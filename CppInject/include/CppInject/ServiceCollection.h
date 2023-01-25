@@ -46,7 +46,7 @@ class ServiceCollection {
   /// <typeparam name="TService">The type of the service</typeparam>
   /// <typeparam name="F">
   /// The type of the factory function:
-  /// (IServiceProvider&amp;) -> std::unique_ptr &lt; TImplementation &gt;
+  /// (IServiceProvider&amp;) -&gt; std::unique_ptr &lt; TImplementation &gt;
   /// </typeparam>
   /// <param name="factory">The factory function that creates the service
   /// instance</param>
@@ -61,7 +61,7 @@ class ServiceCollection {
   /// </summary>
   /// <typeparam name="F">
   /// The type of the factory function:
-  /// (IServiceProvider&amp;) -> std::unique_ptr &lt; TImplementation &gt;
+  /// (IServiceProvider&amp;) -&gt; std::unique_ptr &lt; TImplementation &gt;
   /// </typeparam>
   /// <typeparam name="TService">The type of the service</typeparam>
   /// <param name="factory">The factory function that creates the service
@@ -69,6 +69,41 @@ class ServiceCollection {
   template <typename F, typename = typename std::invoke_result_t<
                             F, IServiceProvider&>::element_type>
   inline void addSingleton(F&& factory);
+
+  /// <summary>
+  /// Register a singleton service using a conversion function
+  /// </summary>
+  /// <typeparam name="TService">The type of the service</typeparam>
+  /// <typeparam name="F">
+  /// Type of the conversion function:
+  /// (IServiceProvider&amp;) -&gt; TImplementation &amp;
+  /// </typeparam>
+  /// <param name="converter">
+  /// The conversion function that must return a reference.
+  /// </param>
+  template <typename TService, typename F,
+            typename = typename std::enable_if_t<
+                std::is_reference_v<
+                    typename std::invoke_result_t<F, IServiceProvider&>> &&
+                std::is_base_of_v<
+                    TService, typename std::decay_t<
+                                  std::invoke_result_t<F, IServiceProvider&>>>>>
+  inline void addExistingSingleton(F&& converter);
+
+  /// <summary>
+  /// Register a singleton service using a conversion function
+  /// </summary>
+  /// <typeparam name="F">
+  /// Type of the conversion function:
+  /// (IServiceProvider&amp;) -&gt; TImplementation &amp;
+  /// </typeparam>
+  /// <param name="converter">
+  /// The conversion function that must return a reference.
+  /// </param>
+  template <typename F,
+            typename = typename std::enable_if_t<std::is_reference_v<
+                typename std::invoke_result_t<F, IServiceProvider&>>>>
+  inline void addExistingSingleton(F&& converter);
 
   /// <summary>
   /// Add an existing service to the ServiceCollection.
@@ -125,6 +160,41 @@ class ServiceCollection {
   template <typename F, typename = typename std::invoke_result_t<
                             F, IServiceProvider&>::element_type>
   inline void addScoped(F&& factory);
+
+  /// <summary>
+  /// Register a scoped service using a conversion function
+  /// </summary>
+  /// <typeparam name="TService">The type of the service</typeparam>
+  /// <typeparam name="F">
+  /// Type of the conversion function:
+  /// (IServiceProvider&amp;) -&gt; TImplementation &amp;
+  /// </typeparam>
+  /// <param name="converter">
+  /// The conversion function that must return a reference.
+  /// </param>
+  template <typename TService, typename F,
+            typename = typename std::enable_if_t<
+                std::is_reference_v<
+                    typename std::invoke_result_t<F, IServiceProvider&>> &&
+                std::is_base_of_v<
+                    TService, typename std::decay_t<
+                                  std::invoke_result_t<F, IServiceProvider&>>>>>
+  inline void addExistingScoped(F&& converter);
+
+  /// <summary>
+  /// Register a scoped service using a conversion function
+  /// </summary>
+  /// <typeparam name="F">
+  /// Type of the conversion function:
+  /// (IServiceProvider&amp;) -&gt; TImplementation &amp;
+  /// </typeparam>
+  /// <param name="converter">
+  /// The conversion function that must return a reference.
+  /// </param>
+  template <typename F,
+            typename = typename std::enable_if_t<std::is_reference_v<
+                typename std::invoke_result_t<F, IServiceProvider&>>>>
+  inline void addExistingScoped(F&& converter);
 
   /// <summary>
   /// Register a transient service
@@ -323,6 +393,16 @@ class ServiceCollection {
           std::is_base_of_v<TService, typename std::invoke_result_t<
                                           F, IServiceProvider&>::element_type>>>
   inline void addService(F&& factory);
+
+  template <class TService, ServiceType serviceType, class F,
+            typename = typename std::enable_if_t<
+                serviceType != ServiceType::Transient &&
+                std::is_reference_v<
+                    typename std::invoke_result_t<F, IServiceProvider&>> &&
+                std::is_base_of_v<
+                    TService, typename std::decay_t<
+                                  std::invoke_result_t<F, IServiceProvider&>>>>>
+  inline void addExistingService(F&& converter);
 };
 
 template <class TService, class TImplementation,
@@ -384,6 +464,37 @@ inline void ServiceCollection::addSingleton(F&& factory) {
       std::forward<F>(factory));
 }
 
+template <class TService, ServiceCollection::ServiceType serviceType, class F,
+          typename>
+inline void ServiceCollection::addExistingService(F&& converter) {
+  using RefWrapperType = std::reference_wrapper<
+      std::decay_t<typename std::invoke_result_t<F, IServiceProvider&>>>;
+  const auto typeIndex = std::type_index(typeid(TService));
+  auto& serviceFactories =
+      _factories.emplace(typeIndex, FactoryFunctionCollection{}).first->second;
+  serviceFactories.emplace_back(
+      [f = std::move(converter)](IServiceProvider& sp) -> std::any {
+        return RefWrapperType(f(sp));
+      },
+      [](std::any managedData) -> std::any {
+        return std::ref(static_cast<TService&>(
+            std::any_cast<RefWrapperType>(managedData).get()));
+      },
+      serviceType);
+}
+
+template <class TService, class F, typename>
+inline void ServiceCollection::addExistingSingleton(F&& converter) {
+  addExistingService<TService, ServiceType::Singleton>(
+      std::forward<F>(converter));
+}
+
+template <class F, typename>
+inline void ServiceCollection::addExistingSingleton(F&& converter) {
+  addExistingService<std::decay_t<std::invoke_result_t<F, IServiceProvider&>>,
+                     ServiceType::Singleton>(std::forward<F>(converter));
+}
+
 template <class TService, class F, typename>
 inline void ServiceCollection::addScoped(F&& factory) {
   addService<TService, ServiceType::Scoped>(std::forward<F>(factory));
@@ -393,6 +504,17 @@ template <typename F, typename>
 inline void ServiceCollection::addScoped(F&& factory) {
   addScoped<typename std::invoke_result_t<F, IServiceProvider&>::element_type,
             F>(std::forward<F>(factory));
+}
+
+template <class TService, class F, typename>
+inline void ServiceCollection::addExistingScoped(F&& converter) {
+  addExistingService<TService, ServiceType::Scoped>(std::forward<F>(converter));
+}
+
+template <class F, typename>
+inline void ServiceCollection::addExistingScoped(F&& converter) {
+  addExistingService<std::decay_t<std::invoke_result_t<F, IServiceProvider&>>,
+                     ServiceType::Scoped>(std::forward<F>(converter));
 }
 
 template <class TService, typename TImplementation, typename>
